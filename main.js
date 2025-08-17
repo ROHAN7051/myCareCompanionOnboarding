@@ -60,6 +60,7 @@ class LungLesionQuestionnaire {
         answerValue = answerValue; // Ensure it's in YYYY-MM-DD format
         break;
       case "single_choice":
+      case "boolean":
       default:
         answerValue = answerValue; // Choice key like "yes", "no", "not_sure"
     }
@@ -67,10 +68,20 @@ class LungLesionQuestionnaire {
     // Save locally in answers object
     this.answers[questionId] = {
       singleAnswer: answerValue,
-      multipleAnswers: input.multiple
-        ? [...input.selectedOptions].map((o) => o.value)
-        : [],
+      multipleAnswers: [],
     };
+
+    // Handle multiple choice questions
+    if (input.type === "checkbox") {
+      const checkboxes = document.querySelectorAll(`input[name="${questionId}"]`);
+      const selectedValues = [];
+      checkboxes.forEach(checkbox => {
+        if (checkbox.checked) {
+          selectedValues.push(checkbox.value);
+        }
+      });
+      this.answers[questionId].multipleAnswers = selectedValues;
+    }
 
     // Update button states
     this.updateButtonStates();
@@ -137,12 +148,12 @@ class LungLesionQuestionnaire {
       });
   }
   getCurrentQuestionId() {
-    if (!this.apiData || !this.apiData.section) return null;
-    const questions = this.apiData.section.questions; // Assuming API returns array of questions
-    if (!questions || questions.length === 0) return null;
-
-    // currentStep is 1-indexed
-    return questions[this.currentStep - 1]?.questionId || null;
+    if (!this.apiData || !this.apiData.section || !this.apiData.section.questions) return null;
+    const questions = this.apiData.section.questions;
+    if (questions.length === 0) return null;
+    
+    // Return the first question's ID since we're showing all questions on one page
+    return questions[0]?.questionId || null;
   }
   handleNext() {
     // Validation check
@@ -153,54 +164,31 @@ class LungLesionQuestionnaire {
 
     console.log("next is clicked");
 
-    // Increment current step
-    if (this.currentStep < this.totalSteps) {
-      this.currentStep++;
-      this.showStep(this.currentStep);
-      this.updateProgress();
-      this.updateButtonStates();
-
-      // Increment page only if it doesn't exceed lastPage
-      if (this.page < this.lastPage) {
-        this.page++;
-      }
-
-      // Call API with updated page
-      console.log("Calling API with page:", this.page); // for debugging
-      this.makeApiCall(this.page);
-    } else {
-      // Last step: handle submit
-      this.handleSubmit();
-    }
-
-    // Redirect if page exceeds lastPage
-    if (this.page > this.lastPage) {
+    // Check if we're at the last page
+    if (this.page >= this.lastPage) {
       window.location.href =
         "https://mycarecompanion-yrf3xy-development.flutterflow.app/loadingScreen";
+      return;
     }
+
+    // Increment page and make API call
+    this.page++;
+    console.log("Calling API with page:", this.page);
+    this.makeApiCall(this.page);
   }
 
   handleSkip() {
-    if (this.page < this.lastPage) {
-      this.page++;
-    }
-
-    if (this.page > this.lastPage) {
-      // Redirect to the loading screen if page exceeds lastPage
+    // Check if we're at the last page
+    if (this.page >= this.lastPage) {
       window.location.href =
         "https://mycarecompanion-yrf3xy-development.flutterflow.app/loadingScreen";
-      return; // Stop further execution
+      return;
     }
 
-    if (this.currentStep < this.totalSteps) {
-      this.currentStep++;
-      this.showStep(this.currentStep);
-      this.updateProgress();
-      this.updateButtonStates();
-
-      // Make the API call when skipping to the next step with updated page number
-      this.makeApiCall(this.page);
-    }
+    // Increment page and make API call
+    this.page++;
+    console.log("Skipping to page:", this.page);
+    this.makeApiCall(this.page);
   }
 
   showStep(step) {
@@ -228,28 +216,24 @@ class LungLesionQuestionnaire {
 
     if (!nextBtn || !skipBtn) return;
 
-    // Update Next button text
-    if (this.currentStep === this.totalSteps) {
+    // Update Next button text based on page
+    if (this.page >= this.lastPage) {
       nextBtn.textContent = "Complete";
       skipBtn.style.display = "none";
     } else {
       nextBtn.textContent = "Next →";
       skipBtn.style.display = "block";
     }
-
-    // Enable/disable Next button based on answer
-    // nextBtn.disabled = !this.canProceed();
   }
 
   canProceed() {
-    // Always allow proceeding on the last step
-    if (this.currentStep === this.totalSteps) return true;
-
-    const questionId = this.getCurrentQuestionId();
-    if (!questionId) return false;
-
-    // Return true if answer exists
-    return this.answers[questionId] !== undefined;
+    // Check if at least one question has been answered
+    if (!this.apiData || !this.apiData.section || !this.apiData.section.questions) {
+      return false;
+    }
+    
+    const questions = this.apiData.section.questions;
+    return questions.some(question => this.answers[question.questionId] !== undefined);
   }
 
   showValidationMessage() {
@@ -322,6 +306,10 @@ class LungLesionQuestionnaire {
 
   async makeApiCall(page) {
     try {
+      // Show loading state
+      const formContainer = document.getElementById("questionnaireForm");
+      formContainer.innerHTML = "<p>Loading questions...</p>";
+      
       const token =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODljNGI3ZGY3OTNjMTY2NTMyYTEzZGQiLCJleHAiOjE3NTc4Mzc2MzIsImlhdCI6MTc1NTI0NTYzMn0.1KQFapcstr5b_QF59-Lp8-ecx0ZOvnWL5Z1GvuHPQ0Y"; // Replace with actual token
       const response = await fetch(`${this.apiUrl}?page=${page}`, {
@@ -341,20 +329,30 @@ class LungLesionQuestionnaire {
       // Assign the API data to be used in the renderQuestions method
       this.apiData = data;
 
+      // Update lastPage from API response if available
+      if (data.lastPage) {
+        this.lastPage = data.lastPage;
+      }
+
       if (
         this.apiData &&
         this.apiData.section &&
         this.apiData.section.questions
       ) {
         this.totalSteps = this.apiData.section.questions.length; // Update total steps based on question count
+        this.currentStep = 1; // Reset to first step for new page
         this.renderQuestions();
+        this.updateProgress();
+        this.updateButtonStates();
       } else {
         console.error("No questions found in the API response");
-        document.getElementById("questionnaireForm").innerHTML =
+        formContainer.innerHTML =
           "<p>No questions available</p>";
       }
     } catch (error) {
       console.error("API call error:", error);
+      const formContainer = document.getElementById("questionnaireForm");
+      formContainer.innerHTML = "<p>Error loading questions. Please try again.</p>";
     }
   }
 
@@ -394,8 +392,10 @@ class LungLesionQuestionnaire {
         case "text":
           const textInput = document.createElement("input");
           textInput.type = "text";
+          textInput.classList.add("text-input");
           textInput.name = question.questionId;
           textInput.value = question.selectedAnswer || "";
+          textInput.dataset.questionType = "text";
           addDataAttribute(textInput);
           textInput.addEventListener("change", () =>
             this.handleAnswerChange(textInput)
@@ -406,7 +406,9 @@ class LungLesionQuestionnaire {
         case "date":
           const dateInput = document.createElement("input");
           dateInput.type = "date";
+          dateInput.classList.add("date-input");
           dateInput.name = question.questionId;
+          dateInput.dataset.questionType = "date";
           addDataAttribute(dateInput);
           dateInput.addEventListener("change", () =>
             this.handleAnswerChange(dateInput)
@@ -417,7 +419,9 @@ class LungLesionQuestionnaire {
         case "number":
           const numberInput = document.createElement("input");
           numberInput.type = "number";
+          numberInput.classList.add("number-input");
           numberInput.name = question.questionId;
+          numberInput.dataset.questionType = "number";
           addDataAttribute(numberInput);
           numberInput.addEventListener("change", () =>
             this.handleAnswerChange(numberInput)
@@ -427,32 +431,55 @@ class LungLesionQuestionnaire {
 
         case "boolean":
           const booleanContainer = document.createElement("div");
+          booleanContainer.classList.add("radio-group");
 
+          const yesLabel = document.createElement("label");
+          yesLabel.classList.add("radio-option");
+          
           const yesInput = document.createElement("input");
           yesInput.type = "radio";
           yesInput.name = question.questionId;
           yesInput.value = "true";
+          yesInput.dataset.questionType = "boolean";
           addDataAttribute(yesInput);
           yesInput.addEventListener("change", () =>
             this.handleAnswerChange(yesInput)
           );
 
-          const yesLabel = document.createElement("label");
+          const yesCustom = document.createElement("span");
+          yesCustom.classList.add("radio-custom");
+          
+          const yesText = document.createElement("span");
+          yesText.classList.add("radio-text");
+          yesText.textContent = "Yes";
+
           yesLabel.appendChild(yesInput);
-          yesLabel.appendChild(document.createTextNode("Yes"));
+          yesLabel.appendChild(yesCustom);
+          yesLabel.appendChild(yesText);
+
+          const noLabel = document.createElement("label");
+          noLabel.classList.add("radio-option");
 
           const noInput = document.createElement("input");
           noInput.type = "radio";
           noInput.name = question.questionId;
           noInput.value = "false";
+          noInput.dataset.questionType = "boolean";
           addDataAttribute(noInput);
           noInput.addEventListener("change", () =>
             this.handleAnswerChange(noInput)
           );
 
-          const noLabel = document.createElement("label");
+          const noCustom = document.createElement("span");
+          noCustom.classList.add("radio-custom");
+          
+          const noText = document.createElement("span");
+          noText.classList.add("radio-text");
+          noText.textContent = "No";
+
           noLabel.appendChild(noInput);
-          noLabel.appendChild(document.createTextNode("No"));
+          noLabel.appendChild(noCustom);
+          noLabel.appendChild(noText);
 
           booleanContainer.appendChild(yesLabel);
           booleanContainer.appendChild(noLabel);
@@ -460,6 +487,9 @@ class LungLesionQuestionnaire {
           break;
 
         case "single_choice":
+          const choiceContainer = document.createElement("div");
+          choiceContainer.classList.add("radio-group");
+          
           question.choices.forEach((choice) => {
             const label = document.createElement("label");
             label.classList.add("radio-option");
@@ -468,6 +498,7 @@ class LungLesionQuestionnaire {
             input.type = "radio";
             input.name = question.questionId;
             input.value = choice.key;
+            input.dataset.questionType = "single_choice";
             addDataAttribute(input);
             input.addEventListener("change", () =>
               this.handleAnswerChange(input)
@@ -488,11 +519,16 @@ class LungLesionQuestionnaire {
               input.checked = true;
             }
 
-            questionElement.appendChild(label);
+            choiceContainer.appendChild(label);
           });
+          
+          questionElement.appendChild(choiceContainer);
           break;
 
         case "multi_choice":
+          const multiChoiceContainer = document.createElement("div");
+          multiChoiceContainer.classList.add("checkbox-group");
+          
           question.choices.forEach((choice) => {
             const label = document.createElement("label");
             label.classList.add("checkbox-option");
@@ -501,15 +537,26 @@ class LungLesionQuestionnaire {
             input.type = "checkbox";
             input.name = question.questionId;
             input.value = choice.key;
+            input.dataset.questionType = "multi_choice";
             addDataAttribute(input);
             input.addEventListener("change", () =>
               this.handleAnswerChange(input)
             );
 
+            const checkboxCustom = document.createElement("span");
+            checkboxCustom.classList.add("checkbox-custom");
+            
+            const checkboxText = document.createElement("span");
+            checkboxText.classList.add("checkbox-text");
+            checkboxText.textContent = choice.label;
+
             label.appendChild(input);
-            label.appendChild(document.createTextNode(choice.label));
-            questionElement.appendChild(label);
+            label.appendChild(checkboxCustom);
+            label.appendChild(checkboxText);
+            multiChoiceContainer.appendChild(label);
           });
+          
+          questionElement.appendChild(multiChoiceContainer);
           break;
 
         case "file":
