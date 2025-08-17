@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>Lung Lesion Questionnaire</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Progress bar -->
+      <div class="progress-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+
+      <!-- Main content -->
+      <div class="questionnaire-container">
+        <div class="header">
+          <h1 id="pageTitle">Lung Lesion Info</h1>
+          <p class="subtitle" id="pageSubtitle">
+            This helps us understand your condition better.
+          </p>
+        </div>
+        <hr />
+        <form id="questionnaireForm" class="form-container">
+          <!-- Questions will be injected here dynamically by JS -->
+        </form>
+      </div>
+
+      <!-- Navigation buttons (fixed at bottom) -->
+      <div class="button-container">
+        <button type="button" id="skipBtn" class="btn btn-secondary">
+          Skip
+        </button>
+        <button type="button" id="nextBtn" class="btn btn-primary">
+          Next →
+        </button>
+      </div>
+    </div>
+
+    <script src="main.js"></script>
+  </body>
+</html>
